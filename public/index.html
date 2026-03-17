@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>AI 陪聊</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/config.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <section class="view is-active" id="homeView">
+        <header class="topbar">
+          <div>
+            <h1>秘语陪聊</h1>
+          </div>
+          <button class="ghost-btn" id="shareButton" type="button">邀请</button>
+        </header>
+        <section class="status-panel hidden" id="statusPanel">正在加载角色列表...</section>
+        <main class="card-grid" id="roleGrid"></main>
+      </section>
+
+      <section class="view" id="chatView" aria-hidden="true">
+        <header class="chat-topbar">
+          <button class="back-btn" id="backButton" type="button">返回</button>
+          <div class="chat-role-meta">
+            <h2 id="chatRoleName">请选择角色</h2>
+          </div>
+          <button class="ghost-btn compact" id="closeButton" type="button">关闭</button>
+        </header>
+
+        <section class="chat-role-panel" id="chatRolePanel">
+          <div class="chat-role-eyebrow">开场白</div>
+          <p class="chat-role-desc" id="chatRoleDescription">进入聊天页后会显示角色简介和历史消息。</p>
+        </section>
+        <main class="chat-role-grid hidden" id="chatRoleGrid"></main>
+        <section class="chat-status hidden" id="chatStatus">请选择一个角色开始聊天。</section>
+        <main class="chat-messages" id="chatMessages"></main>
+
+        <section class="chat-composer">
+          <label class="composer-field" for="chatInput">
+            <textarea id="chatInput" rows="1" placeholder="输入消息"></textarea>
+          </label>
+          <div class="composer-actions">
+            <div class="composer-note hidden" id="composerNote">消息会直接通过 WebApp 调用后端生成回复。</div>
+            <button class="send-btn" id="sendButton" type="button" aria-label="发送">➤</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="profileView" aria-hidden="true">
+        <header class="topbar">
+          <div>
+            <h1>我的信息</h1>
+          </div>
+        </header>
+        <section class="profile-card">
+          <div class="profile-avatar" id="profileAvatar">🙂</div>
+          <div class="profile-meta">
+            <h2 id="profileName">Telegram 用户</h2>
+            <p id="profileUsername">@username</p>
+          </div>
+        </section>
+      </section>
+
+      <footer class="bottom-nav" id="bottomNav">
+        <button class="nav-item active" data-nav="home">
+          <span>⌂</span>
+          <strong>主页</strong>
+        </button>
+        <button class="nav-item" data-nav="chat">
+          <span>☰</span>
+          <strong>聊天</strong>
+        </button>
+        <button class="nav-item disabled" type="button">
+          <span>⌗</span>
+          <strong>tag</strong>
+        </button>
+        <button class="nav-item" data-nav="profile">
+          <span>◌</span>
+          <strong>我的信息</strong>
+        </button>
+      </footer>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>
