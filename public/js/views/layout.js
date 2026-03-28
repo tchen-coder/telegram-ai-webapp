@@ -20,11 +20,16 @@ export function createLayoutView(dom) {
 
     setView(viewName) {
       const isChatView = viewName === "chat";
+      const isRoleDetailView = viewName === "roleDetail";
       const isProfileView = viewName === "profile";
       const isHomeView = viewName === "home";
 
       dom.homeView.classList.toggle("is-active", isHomeView);
       dom.homeView.setAttribute("aria-hidden", String(!isHomeView));
+      if (dom.roleDetailView) {
+        dom.roleDetailView.classList.toggle("is-active", isRoleDetailView);
+        dom.roleDetailView.setAttribute("aria-hidden", String(!isRoleDetailView));
+      }
       dom.chatView.classList.toggle("is-active", isChatView);
       dom.chatView.setAttribute("aria-hidden", String(!isChatView));
       if (dom.profileView) {
@@ -50,7 +55,6 @@ export function createLayoutView(dom) {
     setSending(isSending) {
       if (dom.sendButton) {
         dom.sendButton.disabled = Boolean(isSending);
-        dom.sendButton.textContent = isSending ? "发送中" : "➤";
         dom.sendButton.classList.toggle("is-sending", Boolean(isSending));
       }
       if (dom.chatInput) {

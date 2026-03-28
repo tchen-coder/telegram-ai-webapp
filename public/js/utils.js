@@ -61,12 +61,11 @@ export function splitForStreaming(value, chunkSize, splitLevel) {
     return [text];
   }
 
-  // level 2: 按句号等强分隔符切分（默认逻辑）
+  // level 2: 默认严格按句末标点切分
   // level 3: 先沿用 level 2，后续再补“表情单独切分”
-  const size = Math.max(10, chunkSize || 60);
   const sentenceParts = [];
   let cursor = "";
-  const strongDelimiters = "。！？!?；;\n";
+  const strongDelimiters = "。！？!?";
 
   for (const char of text) {
     cursor += char;
@@ -80,37 +79,34 @@ export function splitForStreaming(value, chunkSize, splitLevel) {
     sentenceParts.push(cursor.trim());
   }
 
+  const closingChars = ")]）】》」』\"'”’";
   const chunks = [];
-  for (const sentence of sentenceParts) {
+  for (const rawPart of sentenceParts) {
+    let sentence = String(rawPart || "").trim();
     if (!sentence) {
       continue;
     }
-    if (sentence.length <= size) {
-      chunks.push(sentence);
+
+    let prefix = "";
+    while (sentence && closingChars.indexOf(sentence[0]) >= 0) {
+      prefix += sentence[0];
+      sentence = sentence.slice(1).trimStart();
+    }
+
+    if (prefix && chunks.length) {
+      chunks[chunks.length - 1] += prefix;
+    }
+
+    if (!sentence) {
       continue;
     }
 
-    let rest = sentence;
-    while (rest.length > size) {
-      let splitAt = -1;
-      for (let i = Math.min(size, rest.length - 1); i >= Math.max(8, size - 8); i -= 1) {
-        if ("，、,:： ".indexOf(rest[i]) >= 0) {
-          splitAt = i + 1;
-          break;
-        }
-      }
-
-      if (splitAt === -1) {
-        splitAt = size;
-      }
-
-      chunks.push(rest.slice(0, splitAt).trim());
-      rest = rest.slice(splitAt).trim();
+    if (/^[\]\)）】》」』"'”’\s]+$/.test(sentence) && chunks.length) {
+      chunks[chunks.length - 1] += sentence;
+      continue;
     }
 
-    if (rest) {
-      chunks.push(rest);
-    }
+    chunks.push(sentence);
   }
 
   return chunks.filter(Boolean);

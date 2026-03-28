@@ -17,8 +17,8 @@ export function createApiClient(apiBase) {
       return apiFetch("/api/myroles?user_id=" + encodeURIComponent(userId));
     },
 
-    async selectRole(userId, roleId) {
-      return apiFetch("/api/roles/select", {
+    async deleteMyRole(userId, roleId) {
+      return apiFetch("/api/myroles/delete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -26,6 +26,21 @@ export function createApiClient(apiBase) {
         body: JSON.stringify({
           user_id: userId,
           role_id: roleId
+        })
+      });
+    },
+
+    async selectRole(userId, roleId, options) {
+      const requestOptions = options || {};
+      return apiFetch("/api/roles/select", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          role_id: roleId,
+          push_to_telegram: Boolean(requestOptions.pushToTelegram)
         })
       });
     },

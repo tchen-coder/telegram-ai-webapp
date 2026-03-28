@@ -2,38 +2,65 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>AI 陪聊</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260321145500" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="/config.js"></script>
   </head>
   <body>
     <div class="app-shell">
       <section class="view is-active" id="homeView">
-        <header class="topbar">
-          <div>
-            <h1>秘语陪聊</h1>
-          </div>
-          <button class="ghost-btn" id="shareButton" type="button">邀请</button>
-        </header>
+        <div class="search-bar-wrap">
+          <input id="homeSearchInput" class="search-input" type="search" placeholder="搜索角色名、简介、标签" />
+        </div>
         <section class="status-panel hidden" id="statusPanel">正在加载角色列表...</section>
         <main class="card-grid" id="roleGrid"></main>
+      </section>
+
+      <section class="view" id="roleDetailView" aria-hidden="true">
+        <header class="detail-topbar">
+          <button class="back-btn" id="roleDetailBackButton" type="button">返回</button>
+        </header>
+        <div class="role-detail-scroll">
+          <section class="role-detail-card">
+            <div class="role-detail-image-wrap">
+              <img id="roleDetailImage" class="role-detail-image" alt="角色图片" />
+            </div>
+            <div class="role-detail-body">
+              <h2 id="roleDetailName">角色</h2>
+              <div class="role-tags role-detail-tags" id="roleDetailTags"></div>
+              <div class="role-detail-section">
+                <h3>角色信息</h3>
+                <p id="roleDetailDescription">暂无描述</p>
+              </div>
+              <div class="role-detail-section">
+                <h3>开场白</h3>
+                <p id="roleDetailOpening">暂无开场白</p>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="role-detail-actions">
+          <button class="role-detail-enter-btn" id="roleDetailEnterButton" type="button">进入聊天</button>
+        </div>
       </section>
 
       <section class="view" id="chatView" aria-hidden="true">
         <header class="chat-topbar">
           <button class="back-btn" id="backButton" type="button">返回</button>
-          <div class="chat-role-meta">
-            <h2 id="chatRoleName">请选择角色</h2>
+          <div class="chat-role-meta hidden">
+            <h2 id="chatRoleName"></h2>
           </div>
-          <button class="ghost-btn compact" id="closeButton" type="button">关闭</button>
         </header>
 
         <section class="chat-role-panel" id="chatRolePanel">
           <div class="chat-role-eyebrow">开场白</div>
           <p class="chat-role-desc" id="chatRoleDescription">进入聊天页后会显示角色简介和历史消息。</p>
         </section>
+        <div class="search-bar-wrap chat-search-bar hidden" id="chatSearchPanel">
+          <input id="chatSearchInput" class="search-input" type="search" placeholder="搜索聊过的角色" />
+        </div>
         <main class="chat-role-grid hidden" id="chatRoleGrid"></main>
         <section class="chat-status hidden" id="chatStatus">请选择一个角色开始聊天。</section>
         <main class="chat-messages" id="chatMessages"></main>
@@ -44,7 +71,9 @@
           </label>
           <div class="composer-actions">
             <div class="composer-note hidden" id="composerNote">消息会直接通过 WebApp 调用后端生成回复。</div>
-            <button class="send-btn" id="sendButton" type="button" aria-label="发送">➤</button>
+            <button class="send-btn" id="sendButton" type="button" aria-label="发送">
+              <span class="send-btn-icon">➤</span>
+            </button>
           </div>
         </section>
       </section>
@@ -58,7 +87,7 @@
         <section class="profile-card">
           <div class="profile-avatar" id="profileAvatar">🙂</div>
           <div class="profile-meta">
-            <h2 id="profileName">Telegram 用户</h2>
+            <h2 id="profileName">用户</h2>
             <p id="profileUsername">@username</p>
           </div>
         </section>
@@ -84,6 +113,6 @@
       </footer>
     </div>
 
-    <script type="module" src="/js/app.js"></script>
+    <script type="module" src="/js/app.js?v=20260321145500"></script>
   </body>
 </html>

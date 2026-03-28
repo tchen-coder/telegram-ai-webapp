@@ -1,14 +1,19 @@
 import { createApiClient } from "./api.js";
 import { createConfig } from "./config.js";
 import { getDomRefs } from "./dom.js";
+import { createRuntime } from "./runtime.js";
 import { createState } from "./state.js";
-import { closeTelegram, openShareLink, resolveUserId, resolveUserProfile, setupTelegram } from "./telegram.js";
 import { createChatView } from "./views/chat-view.js";
 import { createLayoutView } from "./views/layout.js";
 import { createRoleListView } from "./views/role-list.js";
-import { sleep, splitForStreaming } from "./utils.js";
+import { resolveRoleCardImage } from "./image-cache.js";
+import { escapeHtml, sleep, splitForStreaming } from "./utils.js";
 
 const config = createConfig();
+const runtime = createRuntime({
+  previewUserId: config.previewUserId,
+  previewUserName: config.previewUserName
+});
 const dom = getDomRefs();
 const state = createState();
 const api = createApiClient(config.apiBase);
@@ -16,18 +21,144 @@ const layoutView = createLayoutView(dom);
 const chatView = createChatView(dom);
 
 const roleListView = createRoleListView(dom, {
-  onEnterRole: enterRole,
+  onEnterRole: openRoleDetail,
   previewLimit: 20
 });
 const chatRoleListView = createRoleListView(
   { roleGrid: dom.chatRoleGrid },
   {
-    onEnterRole: enterRole,
+    onEnterRole: function (role) {
+      openRoleDetail(role, "chat");
+    },
+    onDeleteRole: deleteRoleConversation,
     previewLimit: 30,
     preferLatestReply: true,
     emptyText: "还没有聊过的角色。先去主页选一个开始聊天。"
   }
 );
+
+function fuzzyMatchRole(role, keyword) {
+  const normalized = String(keyword || "").trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  const haystack = [
+    role.name,
+    role.description,
+    role.latest_reply,
+    ...(Array.isArray(role.tags) ? role.tags : [])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(normalized);
+}
+
+function getUserDisplayName() {
+  if (state.userProfile.username) {
+    return "@" + state.userProfile.username;
+  }
+  if (state.userProfile.displayName) {
+    return state.userProfile.displayName;
+  }
+  if (state.userProfile.firstName) {
+    return state.userProfile.firstName;
+  }
+  return "用户";
+}
+
+function getOutboundSenderName() {
+  if (state.userProfile.username) {
+    return "@" + state.userProfile.username;
+  }
+  if (state.userProfile.displayName) {
+    return state.userProfile.displayName;
+  }
+  if (state.userProfile.firstName) {
+    return state.userProfile.firstName;
+  }
+  return "用户";
+}
+
+function getRuntimeBannerCopy() {
+  return "";
+}
+
+function getRuntimeBannerAction() {
+  return null;
+}
+
+function resizeComposer() {
+  if (!dom.chatInput) {
+    return;
+  }
+  dom.chatInput.style.height = "0px";
+  dom.chatInput.style.height = Math.min(dom.chatInput.scrollHeight, 96) + "px";
+}
+
+function syncViewportHeight() {
+  if (!dom.appShell) {
+    return;
+  }
+  const viewport = window.visualViewport;
+  const nextHeight = Math.round(viewport ? viewport.height : window.innerHeight);
+  dom.appShell.style.setProperty('--app-height', String(nextHeight) + 'px');
+}
+
+function syncKeyboardInset() {
+  if (!dom.appShell || !dom.chatComposer) {
+    return;
+  }
+
+  syncViewportHeight();
+
+  const viewport = window.visualViewport;
+  const composerHeight = Math.ceil(dom.chatComposer.getBoundingClientRect().height || 64);
+  const safeBottom = 10;
+  let composerBottom = safeBottom;
+  let keyboardLikelyOpen = false;
+
+  if (viewport) {
+    const keyboardHeight = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+    keyboardLikelyOpen = document.activeElement === dom.chatInput && keyboardHeight > 120;
+    composerBottom = safeBottom + keyboardHeight;
+  }
+
+  dom.appShell.style.setProperty('--composer-space', String(composerHeight + 22) + 'px');
+  dom.appShell.style.setProperty('--composer-bottom', String(composerBottom) + 'px');
+  dom.appShell.classList.toggle('keyboard-open', keyboardLikelyOpen);
+  dom.appShell.classList.toggle('chat-view-active', Boolean(state.activeRole));
+
+  if (keyboardLikelyOpen && dom.chatMessages) {
+    window.requestAnimationFrame(function () {
+      dom.chatMessages.scrollTop = dom.chatMessages.scrollHeight;
+      dom.chatInput.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+  }
+}
+
+function syncChatRoleLatestReply(content) {
+  if (!state.activeRole || !content) {
+    return;
+  }
+  const nextReply = String(content).trim();
+  if (!nextReply) {
+    return;
+  }
+
+  state.chatRoles = (state.chatRoles || []).map(function (role) {
+    if (role.id !== state.activeRole.id) {
+      return role;
+    }
+    return Object.assign({}, role, { latest_reply: nextReply });
+  });
+  state.roles = (state.roles || []).map(function (role) {
+    if (role.id !== state.activeRole.id) {
+      return role;
+    }
+    return Object.assign({}, role, { latest_reply: nextReply });
+  });
+}
 
 function getRoleById(roleId) {
   return state.roles.find(function (role) {
@@ -36,6 +167,10 @@ function getRoleById(roleId) {
 }
 
 function renderRoles() {
+  const filteredRoles = state.roles.filter(function (role) {
+    return fuzzyMatchRole(role, state.homeSearch);
+  });
+
   if (!state.roles.length) {
     layoutView.setStatus("当前没有可用角色。", true);
     if (dom.roleGrid) {
@@ -44,7 +179,11 @@ function renderRoles() {
     return;
   }
 
-  roleListView.render(state.roles, state.switchingRoleId);
+  roleListView.render(filteredRoles, state.switchingRoleId, state.deletingRoleId);
+  if (!filteredRoles.length) {
+    layoutView.setStatus("没有找到匹配的角色。", false);
+    return;
+  }
   layoutView.setStatus("", false);
 }
 
@@ -52,7 +191,10 @@ function renderChatRoles() {
   if (!dom.chatRoleGrid) {
     return;
   }
-  chatRoleListView.render(state.chatRoles, state.switchingRoleId);
+  const filteredRoles = state.chatRoles.filter(function (role) {
+    return fuzzyMatchRole(role, state.chatSearch);
+  });
+  chatRoleListView.render(filteredRoles, state.switchingRoleId, state.deletingRoleId);
 }
 
 async function loadMyRoles() {
@@ -65,20 +207,30 @@ async function loadMyRoles() {
 }
 
 function renderConversation(options) {
+  chatView.setUserName(getUserDisplayName());
   chatView.renderMessages(
     state.messages,
     state.activeRole || null,
     options
   );
+  if (dom.backButton) {
+    dom.backButton.classList.toggle("hidden", !state.activeRole);
+  }
+  if (dom.appShell) {
+    dom.appShell.classList.toggle('chat-view-active', Boolean(state.activeRole));
+  }
   layoutView.setBottomNavVisible(!state.activeRole);
   if (dom.chatRoleGrid) {
     dom.chatRoleGrid.classList.toggle("hidden", Boolean(state.activeRole));
+  }
+  if (dom.chatSearchPanel) {
+    dom.chatSearchPanel.classList.toggle("hidden", Boolean(state.activeRole));
   }
   if (dom.chatMessages) {
     dom.chatMessages.classList.toggle("hidden", !state.activeRole);
   }
   if (dom.chatRolePanel) {
-    dom.chatRolePanel.classList.toggle("hidden", !state.activeRole);
+    dom.chatRolePanel.classList.add("hidden");
   }
   if (dom.chatComposer) {
     dom.chatComposer.classList.toggle("hidden", !state.activeRole);
@@ -89,24 +241,52 @@ function renderConversation(options) {
   if (dom.sendButton) {
     dom.sendButton.disabled = !state.activeRole || Boolean(state.isSending);
   }
+  syncKeyboardInset();
+}
+
+function renderRoleDetail() {
+  const role = state.previewRole;
+  if (!role) {
+    return;
+  }
+  if (dom.roleDetailImage) {
+    dom.roleDetailImage.src = resolveRoleCardImage(role) || "";
+    dom.roleDetailImage.alt = role.name || "角色图片";
+  }
+  if (dom.roleDetailName) {
+    dom.roleDetailName.textContent = role.name || role.role_name || "角色";
+  }
+  if (dom.roleDetailTags) {
+    const tags = Array.isArray(role.tags) ? role.tags.filter(Boolean) : [];
+    dom.roleDetailTags.innerHTML = tags.map(function (tag) {
+      return '<span class="role-tag">' + escapeHtml(tag) + "</span>";
+    }).join("");
+    dom.roleDetailTags.classList.toggle("hidden", !tags.length);
+  }
+  if (dom.roleDetailDescription) {
+    dom.roleDetailDescription.textContent = role.description || "暂无角色描述。";
+  }
+  if (dom.roleDetailOpening) {
+    dom.roleDetailOpening.textContent = role.greeting_message || "点击进入聊天后开始互动。";
+  }
 }
 
 function renderProfile() {
   if (dom.profileName) {
-    dom.profileName.textContent = state.userProfile.username
-      ? "@" + state.userProfile.username
-      : state.userProfile.displayName || state.userProfile.firstName || "Telegram 用户";
+    dom.profileName.textContent = state.userProfile.displayName
+      || state.userProfile.firstName
+      || (state.userProfile.username ? "@" + state.userProfile.username : "用户");
   }
   if (dom.profileUsername) {
-    dom.profileUsername.textContent = state.userProfile.displayName
-      ? state.userProfile.displayName
-      : (state.userProfile.username ? "@" + state.userProfile.username : "未设置用户名");
+    dom.profileUsername.textContent = state.userProfile.username
+      ? "@" + state.userProfile.username
+      : "未设置用户名";
   }
 }
 
 async function loadRoles() {
   if (!state.userId) {
-    layoutView.setStatus("当前拿不到 Telegram 用户身份。请从 Telegram WebApp 打开，或者在预览时追加 ?user_id=你的TelegramID", true);
+    layoutView.setStatus("当前缺少用户身份。请从 Telegram 小程序打开，或在预览时追加 ?user_id=你的TelegramID。", true);
     return;
   }
 
@@ -122,6 +302,7 @@ async function loadConversation(role) {
     const payload = await api.getConversation(state.userId, role.id);
     const nextRole = payload.data.role || role;
     state.activeRole = nextRole;
+    state.previewRole = nextRole;
     layoutView.setView("chat");
     chatView.updateRole(nextRole);
     state.messages = payload.data.messages || [];
@@ -132,10 +313,40 @@ async function loadConversation(role) {
   }
 }
 
+function openRoleDetail(role, source) {
+  state.previewRole = role;
+  state.previewSource = source || "home";
+  renderRoleDetail();
+  layoutView.setBottomNavVisible(false);
+  layoutView.setView("roleDetail");
+}
+
+function returnFromRoleDetail() {
+  const nextView = state.previewSource === "chat" ? "chat" : "home";
+  state.previewRole = null;
+  state.previewSource = "home";
+  layoutView.setBottomNavVisible(true);
+  layoutView.setView(nextView);
+
+  if (nextView === "chat") {
+    state.activeRole = null;
+    state.messages = [];
+    renderConversation({ scrollMode: "latest" });
+    loadMyRoles().catch(function () {
+      if (dom.chatRoleGrid) {
+        dom.chatRoleGrid.innerHTML = "";
+      }
+    });
+  }
+}
+
 async function enterRole(role) {
   if (state.switchingRoleId) {
     return;
   }
+
+  state.previewRole = null;
+  state.previewSource = "home";
 
   if (role.is_current) {
     await loadConversation(role);
@@ -147,7 +358,9 @@ async function enterRole(role) {
   renderChatRoles();
 
   try {
-    const payload = await api.selectRole(state.userId, role.id);
+    const payload = await api.selectRole(state.userId, role.id, {
+      pushToTelegram: runtime.supportsTelegramPush
+    });
     await loadRoles();
     await loadMyRoles();
     const nextRole = getRoleById(role.id) || payload.data.role || role;
@@ -157,6 +370,39 @@ async function enterRole(role) {
   } finally {
     state.switchingRoleId = null;
     renderRoles();
+    renderChatRoles();
+  }
+}
+
+async function deleteRoleConversation(role) {
+  if (!role || state.deletingRoleId) {
+    return;
+  }
+
+  const confirmed = window.confirm("删除和这个角色的聊天记录后，下次会重新开始。确认删除吗？");
+  if (!confirmed) {
+    return;
+  }
+
+  state.deletingRoleId = role.id;
+  renderChatRoles();
+
+  try {
+    await api.deleteMyRole(state.userId, role.id);
+    if (state.activeRole && state.activeRole.id === role.id) {
+      state.activeRole = null;
+      state.messages = [];
+      layoutView.setView("chat");
+      renderConversation({ scrollMode: "latest" });
+    }
+    await loadRoles();
+    await loadMyRoles();
+    layoutView.setStatus("角色聊天记录已删除。", false);
+    layoutView.setChatStatus("", false);
+  } catch (error) {
+    layoutView.setChatStatus(error.message || "删除失败", true);
+  } finally {
+    state.deletingRoleId = null;
     renderChatRoles();
   }
 }
@@ -175,7 +421,7 @@ async function handleSendMessage() {
   state.isSending = true;
   layoutView.setSending(true);
   layoutView.setComposerNote("正在生成回复...", false);
-  layoutView.setChatStatus("消息发送中...", false);
+  layoutView.setChatStatus("", false);
 
   const pendingUserMessage = {
     message_type: "user",
@@ -188,13 +434,14 @@ async function handleSendMessage() {
   state.messages = state.messages.concat([pendingUserMessage, pendingTypingMessage]);
   renderConversation({ scrollMode: "latest" });
   dom.chatInput.value = "";
+  resizeComposer();
 
   try {
     const payload = await api.sendMessage(
       state.userId,
       state.activeRole.id,
       content,
-      state.userProfile.username || state.userProfile.firstName || ""
+      getOutboundSenderName()
     );
     state.activeRole = payload.data.role || state.activeRole;
     chatView.updateRole(state.activeRole);
@@ -240,12 +487,18 @@ async function handleSendMessage() {
         }
       }
     }
+    const latestAssistantMessage = assistantMessages[assistantMessages.length - 1];
+    syncChatRoleLatestReply(latestAssistantMessage && latestAssistantMessage.content);
+    renderChatRoles();
+    renderRoles();
+    await loadMyRoles();
     layoutView.setChatStatus("", false);
     layoutView.setComposerNote("消息会直接通过 WebApp 调用后端生成回复。", false);
   } catch (error) {
     state.messages = state.messages.slice(0, -2);
     renderConversation({ scrollMode: "latest" });
     dom.chatInput.value = content;
+    resizeComposer();
     layoutView.setChatStatus(error.message || "消息发送失败", true);
     layoutView.setComposerNote(error.message || "消息发送失败", true);
   } finally {
@@ -257,7 +510,7 @@ async function handleSendMessage() {
 function bindEvents() {
   if (dom.shareButton) {
     dom.shareButton.addEventListener("click", function () {
-      if (!openShareLink(config.tg)) {
+      if (!runtime.openShareLink()) {
         window.alert("这里预留邀请入口。");
       }
     });
@@ -266,15 +519,14 @@ function bindEvents() {
   if (dom.backButton) {
     dom.backButton.addEventListener("click", function () {
       if (state.activeRole) {
+        const currentRole = state.activeRole;
         state.activeRole = null;
         state.messages = [];
-        layoutView.setView("chat");
-        renderConversation({ scrollMode: "latest" });
-        loadMyRoles().catch(function () {
-          if (dom.chatRoleGrid) {
-            dom.chatRoleGrid.innerHTML = "";
-          }
-        });
+        openRoleDetail(currentRole, "chat");
+        return;
+      }
+      if (state.previewRole) {
+        returnFromRoleDetail();
         return;
       }
       layoutView.setBottomNavVisible(true);
@@ -282,9 +534,24 @@ function bindEvents() {
     });
   }
 
+  if (dom.roleDetailBackButton) {
+    dom.roleDetailBackButton.addEventListener("click", function () {
+      returnFromRoleDetail();
+    });
+  }
+
+  if (dom.roleDetailEnterButton) {
+    dom.roleDetailEnterButton.addEventListener("click", function () {
+      if (!state.previewRole) {
+        return;
+      }
+      enterRole(state.previewRole);
+    });
+  }
+
   if (dom.closeButton) {
     dom.closeButton.addEventListener("click", function () {
-      closeTelegram(config.tg);
+      runtime.close();
     });
   }
 
@@ -299,12 +566,58 @@ function bindEvents() {
         handleSendMessage();
       }
     });
+    dom.chatInput.addEventListener("input", function () {
+      resizeComposer();
+      syncKeyboardInset();
+    });
+    dom.chatInput.addEventListener("focus", function () {
+      syncViewportHeight();
+      syncKeyboardInset();
+      window.setTimeout(syncKeyboardInset, 180);
+      window.setTimeout(syncKeyboardInset, 360);
+    });
+    dom.chatInput.addEventListener("blur", function () {
+      window.setTimeout(syncKeyboardInset, 80);
+      window.setTimeout(syncViewportHeight, 120);
+    });
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", function () {
+      syncViewportHeight();
+      syncKeyboardInset();
+    });
+    window.visualViewport.addEventListener("scroll", function () {
+      syncViewportHeight();
+      syncKeyboardInset();
+    });
+  }
+
+  window.addEventListener("resize", function () {
+    syncViewportHeight();
+    syncKeyboardInset();
+  });
+
+  if (dom.homeSearchInput) {
+    dom.homeSearchInput.addEventListener("input", function () {
+      state.homeSearch = dom.homeSearchInput.value || "";
+      renderRoles();
+    });
+  }
+
+  if (dom.chatSearchInput) {
+    dom.chatSearchInput.addEventListener("input", function () {
+      state.chatSearch = dom.chatSearchInput.value || "";
+      renderChatRoles();
+    });
   }
 
   dom.navItems.forEach(function (item) {
     item.addEventListener("click", function () {
       const target = item.dataset.nav;
       if (target === "chat") {
+        state.previewRole = null;
+        state.previewSource = "home";
         layoutView.setView("chat");
         renderConversation();
         loadMyRoles().catch(function () {
@@ -315,10 +628,14 @@ function bindEvents() {
         return;
       }
       if (target === "profile") {
+        state.previewRole = null;
+        state.previewSource = "home";
         layoutView.setBottomNavVisible(true);
         layoutView.setView("profile");
         return;
       }
+      state.previewRole = null;
+      state.previewSource = "home";
       layoutView.setBottomNavVisible(true);
       layoutView.setView("home");
     });
@@ -326,12 +643,15 @@ function bindEvents() {
 }
 
 async function init() {
-  state.userId = resolveUserId(config.tg, config.previewUserId);
-  state.userProfile = Object.assign({}, state.userProfile, resolveUserProfile(config.tg) || {});
-  setupTelegram(config.tg);
+  state.userProfile = Object.assign({}, state.userProfile, runtime.getUserProfile() || {});
+  state.userId = state.userProfile.id;
+  runtime.setup();
   bindEvents();
+  syncViewportHeight();
   layoutView.setComposerNote("消息会直接通过 WebApp 调用后端生成回复。", false);
   renderProfile();
+  resizeComposer();
+  syncKeyboardInset();
   renderConversation({ scrollMode: "latest" });
 
   try {
