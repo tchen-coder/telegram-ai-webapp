@@ -9,12 +9,22 @@ export function createApiClient(apiBase) {
   }
 
   return {
-    async listRoles(userId) {
-      return apiFetch("/api/roles?user_id=" + encodeURIComponent(userId));
+    async listRoles(userId, options) {
+      const query = new URLSearchParams({
+        user_id: userId,
+        page: String((options && options.page) || 1),
+        page_size: String((options && options.pageSize) || 10)
+      });
+      return apiFetch("/api/roles?" + query.toString());
     },
 
-    async listMyRoles(userId) {
-      return apiFetch("/api/myroles?user_id=" + encodeURIComponent(userId));
+    async listMyRoles(userId, options) {
+      const query = new URLSearchParams({
+        user_id: userId,
+        page: String((options && options.page) || 1),
+        page_size: String((options && options.pageSize) || 10)
+      });
+      return apiFetch("/api/myroles?" + query.toString());
     },
 
     async deleteMyRole(userId, roleId) {
@@ -45,13 +55,16 @@ export function createApiClient(apiBase) {
       });
     },
 
-    async getConversation(userId, roleId) {
-      return apiFetch(
-        "/api/conversations?user_id=" +
-          encodeURIComponent(userId) +
-          "&role_id=" +
-          encodeURIComponent(roleId)
-      );
+    async getConversation(userId, roleId, options) {
+      const query = new URLSearchParams({
+        user_id: userId,
+        role_id: String(roleId),
+        limit: String((options && options.limit) || 10)
+      });
+      if (options && options.beforeGroupSeq != null) {
+        query.set("before_group_seq", String(options.beforeGroupSeq));
+      }
+      return apiFetch("/api/conversations?" + query.toString());
     },
 
     async sendMessage(userId, roleId, content, userName) {

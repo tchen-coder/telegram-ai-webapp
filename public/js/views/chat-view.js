@@ -2,8 +2,8 @@ import { resolveMessageImageUrl, resolveRoleAvatarImage } from "../image-cache.j
 import { formatAssistantHtml, sanitizeDisplayText } from "../utils.js";
 
 export function createChatView(dom) {
-  let lastRoleKey = "";
-  let lastMessageKeys = [];
+  const TOP_SENTINEL_ID = "chatHistoryTopSentinel";
+  const LOAD_MORE_BUTTON_ID = "chatHistoryLoadMoreButton";
 
   function resolveRoleImage(role) {
     return resolveRoleAvatarImage(role);
@@ -19,26 +19,6 @@ export function createChatView(dom) {
       return baseName;
     }
     return baseName + "（" + relationshipLabel + "）";
-  }
-
-  function getRoleKey(role) {
-    if (!role) {
-      return "";
-    }
-    return [
-      role.id || "",
-      role.name || "",
-      role.raw_avatar_url || role.avatar_url || "",
-      role.raw_opening_image_url || role.opening_image_url || ""
-    ].join("|");
-  }
-
-  function getMessageKey(message, index) {
-    return [
-      message && message.id ? "id:" + message.id : "idx:" + index,
-      message && message.message_type ? message.message_type : "",
-      message && (message.raw_image_url || message.image_url || "")
-    ].join("|");
   }
 
   function createImageElement(url, altText) {
@@ -106,9 +86,7 @@ export function createChatView(dom) {
     syncImage(avatar, roleImage, roleName || "角色");
 
     return {
-      avatar,
-      main,
-      label
+      main
     };
   }
 
@@ -136,8 +114,6 @@ export function createChatView(dom) {
 
     label.textContent = "我";
     return {
-      main,
-      label,
       content
     };
   }
@@ -152,7 +128,6 @@ export function createChatView(dom) {
     if (content.innerHTML !== html) {
       content.innerHTML = html;
     }
-    return content;
   }
 
   function removeSelector(main, selector) {
@@ -203,11 +178,6 @@ export function createChatView(dom) {
 
   function createMessageBubble(message, roleName, roleImage) {
     const bubble = document.createElement("article");
-    patchMessageBubble(bubble, message, roleName, roleImage);
-    return bubble;
-  }
-
-  function patchMessageBubble(bubble, message, roleName, roleImage) {
     const type = message && message.message_type ? message.message_type : "";
     const isUser = type === "user";
     const isTyping = type === "assistant_typing";
@@ -220,13 +190,13 @@ export function createChatView(dom) {
     if (isUser) {
       const userShell = ensureUserShell(bubble);
       userShell.content.textContent = message.content || "";
-      return true;
+      return bubble;
     }
 
     const assistantShell = ensureAssistantShell(bubble, roleName, roleImage);
     if (isTyping) {
       ensureTyping(assistantShell.main);
-      return true;
+      return bubble;
     }
 
     if (isAssistantImage) {
@@ -236,39 +206,67 @@ export function createChatView(dom) {
         roleName,
         message.content || ""
       );
-      return true;
+      return bubble;
     }
 
     ensureAssistantMessage(assistantShell.main, message.content || "");
-    return true;
+    return bubble;
   }
 
-  function canPatch(roleKey, messageKeys) {
-    if (!dom.chatMessages) {
-      return false;
-    }
-    if (roleKey !== lastRoleKey) {
-      return false;
-    }
-    if (messageKeys.length !== lastMessageKeys.length) {
-      return false;
-    }
-    for (let i = 0; i < messageKeys.length; i += 1) {
-      if (messageKeys[i] !== lastMessageKeys[i]) {
-        return false;
+  function buildTurns(messages) {
+    const turns = [];
+    const groupedTurns = new Map();
+    let pendingTurn = null;
+
+    (Array.isArray(messages) ? messages : []).forEach(function (message, index) {
+      const hasGroupSeq = message && message.group_seq != null;
+      if (hasGroupSeq) {
+        pendingTurn = null;
+        const turnKey = "group:" + String(message.group_seq);
+        let turn = groupedTurns.get(turnKey);
+        if (!turn) {
+          turn = {
+            key: turnKey,
+            groupSeq: message.group_seq,
+            messages: []
+          };
+          groupedTurns.set(turnKey, turn);
+          turns.push(turn);
+        }
+        turn.messages.push(message);
+        return;
       }
-    }
-    return dom.chatMessages.children.length === messageKeys.length;
+
+      if (!pendingTurn) {
+        pendingTurn = {
+          key: "pending:" + String(index),
+          groupSeq: null,
+          messages: []
+        };
+        turns.push(pendingTurn);
+      }
+      pendingTurn.messages.push(message);
+    });
+
+    return turns;
   }
 
-  function syncScroll(settings, isPatched) {
+  function syncScroll(settings) {
     requestAnimationFrame(function () {
+      if (!dom.chatMessages) {
+        return;
+      }
+
       if (settings.scrollMode === "top") {
         dom.chatMessages.scrollTop = 0;
-        window.scrollTo({
-          top: 0,
-          behavior: "auto"
-        });
+        return;
+      }
+
+      if (settings.scrollMode === "preserve") {
+        const previousHeight = Number(settings.previousScrollHeight) || 0;
+        const previousTop = Number(settings.previousScrollTop) || 0;
+        const heightDelta = dom.chatMessages.scrollHeight - previousHeight;
+        dom.chatMessages.scrollTop = previousTop + heightDelta;
         return;
       }
 
@@ -276,14 +274,10 @@ export function createChatView(dom) {
       if (lastMessage && typeof lastMessage.scrollIntoView === "function") {
         lastMessage.scrollIntoView({
           block: "end",
-          behavior: isPatched ? "auto" : "smooth"
+          behavior: "smooth"
         });
       }
       dom.chatMessages.scrollTop = dom.chatMessages.scrollHeight;
-      window.scrollTo({
-        top: document.body.scrollHeight,
-        behavior: isPatched ? "auto" : "smooth"
-      });
     });
   }
 
@@ -297,38 +291,53 @@ export function createChatView(dom) {
   function renderMessages(messages, role, options) {
     const settings = Object.assign(
       {
-        scrollMode: "latest"
+        scrollMode: "latest",
+        previousScrollHeight: 0,
+        previousScrollTop: 0
       },
       options || {}
     );
     const roleName = resolveRoleName(role);
     const roleImage = resolveRoleImage(role);
-    const roleKey = getRoleKey(role);
-    const messageList = Array.isArray(messages) ? messages : [];
-    const messageKeys = messageList.map(getMessageKey);
+    const turns = buildTurns(messages);
     updateRole(role);
 
-    let patched = false;
-    if (canPatch(roleKey, messageKeys)) {
-      patched = messageList.every(function (message, index) {
-        return patchMessageBubble(dom.chatMessages.children[index], message, roleName, roleImage);
-      });
-    }
+    const fragment = document.createDocumentFragment();
+    const loadMoreButton = document.createElement("button");
+    loadMoreButton.id = LOAD_MORE_BUTTON_ID;
+    loadMoreButton.className = "chat-history-load-more";
+    loadMoreButton.type = "button";
+    loadMoreButton.textContent = "加载更早消息";
+    fragment.appendChild(loadMoreButton);
 
-    if (!patched) {
-      const fragment = document.createDocumentFragment();
-      messageList.forEach(function (message) {
-        fragment.appendChild(createMessageBubble(message, roleName, roleImage));
-      });
-      dom.chatMessages.replaceChildren(fragment);
-    }
+    const topSentinel = document.createElement("div");
+    topSentinel.id = TOP_SENTINEL_ID;
+    topSentinel.className = "chat-history-top-sentinel";
+    fragment.appendChild(topSentinel);
 
-    lastRoleKey = roleKey;
-    lastMessageKeys = messageKeys;
-    syncScroll(settings, patched);
+    turns.forEach(function (turn) {
+      const turnGroup = document.createElement("section");
+      turnGroup.className = "turn-group";
+      if (turn.groupSeq != null) {
+        turnGroup.dataset.groupSeq = String(turn.groupSeq);
+      }
+
+      const stack = document.createElement("div");
+      stack.className = "turn-stack";
+      turn.messages.forEach(function (message) {
+        stack.appendChild(createMessageBubble(message, roleName, roleImage));
+      });
+      turnGroup.appendChild(stack);
+      fragment.appendChild(turnGroup);
+    });
+
+    dom.chatMessages.replaceChildren(fragment);
+    syncScroll(settings);
   }
 
   return {
+    loadMoreButtonId: LOAD_MORE_BUTTON_ID,
+    topSentinelId: TOP_SENTINEL_ID,
     setUserName() {},
     updateRole,
     renderMessages

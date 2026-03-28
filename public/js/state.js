@@ -2,7 +2,19 @@ export function createState() {
   return {
     userId: null,
     roles: [],
+    rolesPagination: {
+      page: 0,
+      pageSize: 10,
+      hasMore: true,
+      isLoading: false
+    },
     chatRoles: [],
+    chatRolesPagination: {
+      page: 0,
+      pageSize: 10,
+      hasMore: true,
+      isLoading: false
+    },
     currentRoleId: null,
     previewRole: null,
     previewSource: "home",
@@ -10,6 +22,12 @@ export function createState() {
     switchingRoleId: null,
     deletingRoleId: null,
     messages: [],
+    conversationPagination: {
+      hasMore: false,
+      nextBeforeGroupSeq: null,
+      isLoadingHistory: false,
+      activeRoleId: null
+    },
     isSending: false,
     homeSearch: "",
     chatSearch: "",
