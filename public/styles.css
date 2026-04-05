@@ -73,6 +73,7 @@ select {
 }
 
 #homeView.is-active,
+#messagesView.is-active,
 #profileView.is-active {
   min-height: calc(var(--app-height, 100vh) - 102px);
   overflow-y: auto;

@@ -21,6 +21,31 @@ export function createChatView(dom) {
     return baseName + "（" + relationshipLabel + "）";
   }
 
+  function resolveRoleNameForMessage(role, message) {
+    if (!role) {
+      return "角色";
+    }
+    const baseName = sanitizeDisplayText(role.name || role.role_name || "").trim() || "角色";
+    const messageRelationshipLabel = sanitizeDisplayText(
+      (message && (message.cur_relationship_label || "")) || ""
+    ).trim();
+    if (messageRelationshipLabel) {
+      return baseName + "（" + messageRelationshipLabel + "）";
+    }
+    if (message && message.cur_relationship != null) {
+      const relationshipMap = {
+        1: "朋友",
+        2: "恋人",
+        3: "爱人"
+      };
+      const fallbackLabel = relationshipMap[Number(message.cur_relationship)] || "";
+      if (fallbackLabel) {
+        return baseName + "（" + fallbackLabel + "）";
+      }
+    }
+    return resolveRoleName(role);
+  }
+
   function createImageElement(url, altText) {
     const image = document.createElement("img");
     image.alt = altText;
@@ -325,7 +350,13 @@ export function createChatView(dom) {
       const stack = document.createElement("div");
       stack.className = "turn-stack";
       turn.messages.forEach(function (message) {
-        stack.appendChild(createMessageBubble(message, roleName, roleImage));
+        stack.appendChild(
+          createMessageBubble(
+            message,
+            resolveRoleNameForMessage(role, message),
+            roleImage
+          )
+        );
       });
       turnGroup.appendChild(stack);
       fragment.appendChild(turnGroup);

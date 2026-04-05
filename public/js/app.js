@@ -1,13 +1,13 @@
-import { createApiClient } from "./api.js";
-import { createConfig } from "./config.js";
-import { getDomRefs } from "./dom.js";
-import { createRuntime } from "./runtime.js";
-import { createState } from "./state.js";
-import { createChatView } from "./views/chat-view.js";
-import { createLayoutView } from "./views/layout.js";
-import { createRoleListView } from "./views/role-list.js";
-import { resolveRoleCardImage } from "./image-cache.js";
-import { escapeHtml, sleep, splitForStreaming } from "./utils.js";
+import { createApiClient } from "./api.js?v=20260328123500";
+import { createConfig } from "./config.js?v=20260328123500";
+import { getDomRefs } from "./dom.js?v=20260328123500";
+import { createRuntime } from "./runtime.js?v=20260328123500";
+import { createState } from "./state.js?v=20260328123500";
+import { createChatView } from "./views/chat-view.js?v=20260328123500";
+import { createLayoutView } from "./views/layout.js?v=20260328123500";
+import { createRoleListView } from "./views/role-list.js?v=20260328123500";
+import { resolveRoleCardImage } from "./image-cache.js?v=20260328123500";
+import { escapeHtml, sleep, splitForStreaming } from "./utils.js?v=20260328123500";
 
 const ROLE_PAGE_SIZE = 10;
 const MY_ROLE_PAGE_SIZE = 10;
@@ -368,6 +368,31 @@ async function loadMyRoles(options) {
     renderChatRoles();
   } finally {
     state.chatRolesPagination.isLoading = false;
+  }
+}
+
+async function loadMessagesView() {
+  if (!state.userId || !dom.messagesGrid) {
+    return;
+  }
+  layoutView.setMessagesStatus("正在加载...", false);
+  try {
+    const payload = await api.listMyRoles(state.userId, { page: 1, pageSize: 50 });
+    const roles = payload.data.roles || [];
+    if (roles.length === 0) {
+      layoutView.setMessagesStatus("还没有聊过的角色", false);
+      dom.messagesGrid.innerHTML = "";
+      return;
+    }
+    layoutView.setMessagesStatus("", false);
+    const messagesRoleListView = createRoleListView({ roleGrid: dom.messagesGrid }, {
+      onEnterRole: function(role) { openRoleDetail(role, "messages"); },
+      onDeleteRole: deleteRoleConversation,
+      preferLatestReply: true
+    });
+    messagesRoleListView.render(roles, "");
+  } catch (error) {
+    layoutView.setMessagesStatus(error.message || "加载失败", true);
   }
 }
 
@@ -885,6 +910,13 @@ function bindEvents() {
     });
   }
 
+  if (dom.messagesSearchInput) {
+    dom.messagesSearchInput.addEventListener("input", function () {
+      const keyword = dom.messagesSearchInput.value || "";
+      loadMessagesView();
+    });
+  }
+
   dom.navItems.forEach(function (item) {
     item.addEventListener("click", function () {
       const target = item.dataset.nav;
@@ -898,6 +930,14 @@ function bindEvents() {
             dom.chatRoleGrid.innerHTML = "";
           }
         });
+        return;
+      }
+      if (target === "messages") {
+        state.previewRole = null;
+        state.previewSource = "home";
+        layoutView.setBottomNavVisible(true);
+        layoutView.setView("messages");
+        loadMessagesView();
         return;
       }
       if (target === "profile") {

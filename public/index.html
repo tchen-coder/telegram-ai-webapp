@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>AI 陪聊</title>
-    <link rel="stylesheet" href="/styles.css?v=20260321145500" />
+    <link rel="stylesheet" href="/styles.css?v=20260328122000" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="/config.js"></script>
   </head>
@@ -78,6 +78,19 @@
         </section>
       </section>
 
+      <section class="view" id="messagesView" aria-hidden="true">
+        <header class="topbar">
+          <div>
+            <h1>消息</h1>
+          </div>
+        </header>
+        <div class="search-bar-wrap">
+          <input id="messagesSearchInput" class="search-input" type="search" placeholder="搜索聊过的角色" />
+        </div>
+        <section class="status-panel hidden" id="messagesStatus">正在加载...</section>
+        <main class="card-grid" id="messagesGrid"></main>
+      </section>
+
       <section class="view" id="profileView" aria-hidden="true">
         <header class="topbar">
           <div>
@@ -95,24 +108,20 @@
 
       <footer class="bottom-nav" id="bottomNav">
         <button class="nav-item active" data-nav="home">
-          <span>⌂</span>
-          <strong>主页</strong>
+          <span>🔍</span>
+          <strong>探索</strong>
         </button>
-        <button class="nav-item" data-nav="chat">
-          <span>☰</span>
-          <strong>聊天</strong>
-        </button>
-        <button class="nav-item disabled" type="button">
-          <span>⌗</span>
-          <strong>tag</strong>
+        <button class="nav-item" data-nav="messages">
+          <span>💬</span>
+          <strong>消息</strong>
         </button>
         <button class="nav-item" data-nav="profile">
-          <span>◌</span>
-          <strong>我的信息</strong>
+          <span>👤</span>
+          <strong>我的</strong>
         </button>
       </footer>
     </div>
 
-    <script type="module" src="/js/app.js?v=20260321145500"></script>
+    <script type="module" src="/js/app.js?v=20260328122000"></script>
   </body>
 </html>

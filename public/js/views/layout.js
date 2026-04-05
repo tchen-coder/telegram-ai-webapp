@@ -18,11 +18,16 @@ export function createLayoutView(dom) {
       setPanelState(dom.chatStatus, message, isError);
     },
 
+    setMessagesStatus(message, isError) {
+      setPanelState(dom.messagesStatus, message, isError);
+    },
+
     setView(viewName) {
       const isChatView = viewName === "chat";
       const isRoleDetailView = viewName === "roleDetail";
       const isProfileView = viewName === "profile";
       const isHomeView = viewName === "home";
+      const isMessagesView = viewName === "messages";
 
       dom.homeView.classList.toggle("is-active", isHomeView);
       dom.homeView.setAttribute("aria-hidden", String(!isHomeView));
@@ -32,6 +37,10 @@ export function createLayoutView(dom) {
       }
       dom.chatView.classList.toggle("is-active", isChatView);
       dom.chatView.setAttribute("aria-hidden", String(!isChatView));
+      if (dom.messagesView) {
+        dom.messagesView.classList.toggle("is-active", isMessagesView);
+        dom.messagesView.setAttribute("aria-hidden", String(!isMessagesView));
+      }
       if (dom.profileView) {
         dom.profileView.classList.toggle("is-active", isProfileView);
         dom.profileView.setAttribute("aria-hidden", String(!isProfileView));
